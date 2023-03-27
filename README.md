@@ -1,2 +1,2 @@
 # kananlento
-Peli jossa lennetään kanaa (Flappy Bird tyylinen)
+Peli jossa lennätään kanaa (Flappy Bird tyylinen)
