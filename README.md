@@ -1,2 +1,2 @@
 # Kanan lento
-Peli jossa lennätään kanaa Flappy Bird tyylinen.
+Peli jossa lennätään kanaa Flappy Bird-tyylinen.
