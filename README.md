@@ -1,2 +1,2 @@
-# Kanan lento
-Peli jossa lennätään kanaa Flappy Bird-tyylinen.
+# Unicorn flight
+Peli jossa lennätetään yksisarvista Flappy Bird-tyylinen.
