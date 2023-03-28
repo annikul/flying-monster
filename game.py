@@ -19,7 +19,9 @@ class Game:
         self.img_monster1 = pygame.transform.rotozoom(img_monster1, 0, 1/16)
 
     def init_objects(self):
-        self.monster_pos = (0,300)
+        self.monster_y_speed = 0
+        self.monster_pos = (200,300)
+        self.monster_lift = False
 
     def run(self):  # Aina kun lisätään funktioon luokkia pitää olla (self): #Tämä on funktio alla luokat
         clock = pygame.time.Clock()
@@ -39,9 +41,30 @@ class Game:
          for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
-
+                elif event.type == pygame.KEYDOWN:
+                    if event.key in (pygame.K_SPACE, pygame.K_UP):
+                        self.monster_lift = True  # Monsteri nousee ylöspäin
+                elif event.type == pygame.KEYUP:
+                    if event.key in (pygame.K_SPACE, pygame.K_UP):
+                        self.monster_lift = False
+    
     def handle_game_logic(self):
-        self.monster_pos = (self.monster_pos[0] + 1, self.monster_pos [1])
+        monster_y = self.monster_pos[1]
+        
+        if self.monster_lift:
+            # Lintua nostetaan (8px / frame)
+            self.monster_y_speed = 8
+        else:    
+            # Painovoima (lisää putoamisnopeutta joka kuvassa)
+            self.monster_y_speed += 0.2
+ 
+       
+        # Liikuta monsteria sen nopeuden verran
+        monster_y += self.monster_y_speed
+
+
+        self.monster_pos = (self.monster_pos[0], monster_y)
+
 
     def update_screen(self):
         # Täytä tausta violetilla värillä
