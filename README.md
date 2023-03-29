@@ -1,2 +1,2 @@
-# Flying unicorn
-Peli jossa lennätetään yksisarvista Flappy Bird-tyylinen.
+# Flying monster
+Peli jossa lennätetään monsteria Flappy Bird-tyylinen.
