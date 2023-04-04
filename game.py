@@ -1,8 +1,10 @@
+import random
+
 import pygame
 
 DEFAULT_SCREEN_SIZE = (800, 450)
-FPS_TEXT_COLOR = (128, 0, 128)  # dark blue
-
+FPS_TEXT_COLOR = (128, 0, 128)  # dark purple
+TEXT_COLOR = (128, 0, 0) # dark red
 
 def main():
     game = Game()
@@ -13,7 +15,6 @@ class Game:
     def __init__(self):
         pygame.init()
         self.clock = pygame.time.Clock()
-        self.screen = pygame.display.set_mode((800, 600)) # pelin näyttö, koon pitää olla kahtien sulkujen sisällä
         self.is_fullscreen = False
         self.show_fps = True
         self.screen = pygame.display.set_mode(DEFAULT_SCREEN_SIZE)
@@ -21,22 +22,23 @@ class Game:
         self.screen_h = self.screen.get_height()
         self.running = False
         self.font16 = pygame.font.Font('fonts/SyneMono-Regular.ttf', 16)
-        self.font96 = pygame.font.Font('fonts/SyneMono-Regular.ttf', 96)
         self.init_graphics()
         self.init_objects()
 
     def init_graphics(self):
+        big_font_size = int(96 * self.screen_h / 450)
+        self.font_big = pygame.font.Font('fonts/SyneMono-Regular.ttf', big_font_size)
         original_monster_images = [
             pygame.image.load(f'images/monster/flying/frame-{i}.png')
             for i in [1, 2, 3, 4]
         ]
         self.monster_imgs = [
-            pygame.transform.rotozoom(x, 0, 1/16)
+            pygame.transform.rotozoom(x, 0, self.screen_h / 9600).convert_alpha
             for x in original_monster_images
         ]
         original_monster_dead_images = [
-            pygame.image.load(f'images/background/layer_{i}.png')
-            for i in [1, 2, 3]
+            pygame.image.load(f'images/monster/got_hit/frame-{i}.png')
+            for i in [1, 2]
         ]
         self.monster_dead_imgs = [
             pygame.transform.rotozoom(img, 0, self.screen_h / 9600).convert_alpha()
@@ -62,6 +64,7 @@ class Game:
         self.mosnter_angle = 0
         self.monster_frame = 0
         self.monster_lift = False
+        self.obstacles = [Obstacle.make_random(self.screen_w, self.screen_h)]
         
     def scale_positions(self, scale_x, scale_y):
         self.monster_pos = (self.monster_pos[0] * scale_x, self.monster_pos[1] * scale_y)
@@ -148,6 +151,9 @@ class Game:
         # Aseta  monsterin x-y-koordinaatit self.monster_pos-muuttujaan
         self.monster_pos = (self.monster_pos[0], monster_y)
 
+        for obstacle in self.obstacles:
+            obstacle.move(self.screen_w * 0.005)
+
     def update_screen(self):
         # Täytä tausta violetilla värillä
         #self.screen.fill('purple')
@@ -168,17 +174,23 @@ class Game:
                 # ...niin aloita alusta
                 self.bg_pos[i] += self.bg_widths[i]
 
+        for obstacle in self.obstacles:
+            obstacle.render(self.screen)
+
         # Piirrä lintu
         if self.monster_alive:
             monster_img_i = self.monster_imgs[(self.monster_frame // 3) % 4]
         else:
             monster_img_i = self.monster_dead_imgs[(self.monster_frame // 10) % 2]
-        monster_img = pygame.transform.rotozoom(monster_img_i, self.monster_frame, 1)
+        monster_img = pygame.transform.rotozoom(monster_img_i, self.monster_angle, 1)
         self.screen.blit(monster_img, self.monster_pos)
 
         if not self.monster_alive:
-            fps_img = self.font16.render(fps_text, True, FPS_TEXT_COLOR)
-            self.screen.blit(fps_img, (0, 0))
+            game_over_img = self.font_big.render('GAME OVER', True, TEXT_COLOR)
+            x = self.screen_w / 2 - game_over_img.get_width() / 2
+            y = self.screen_h / 2 - game_over_img.get_height() / 2
+            self.screen.blit(game_over_img, (x, y))
+
         # Piirrä FPS luku
         if self.show_fps:
             fps_text = f'{self.clock.get_fps():.1f} fps'
@@ -186,6 +198,37 @@ class Game:
             self.screen.blit(fps_img, (0, 0))
 
         pygame.display.flip()
+
+
+class Obstacle:
+    def __init__(self, position, upper_height, lower_height, width=100):
+        self.position = position # vasemman reunan sijainti
+        self.upper_height = upper_height
+        self.lower_height =lower_height
+        self.width = width
+        self.color = (0, 128, 0) # dark green
+
+    @classmethod
+    def make_random(cls, screen_w, screen_h):
+        h1 = random.randint(int(screen_h * 0.05), int(screen_h * 0.75))
+        h2 = random.randint(int((screen_h - h1) * 0.05),
+                             int((screen_h - h1) * 0.75))
+        return cls(upper_height=h1, lower_height=h2, position=screen_w)
+        
+    def move(self, speed):
+        self.position -= speed
+
+    def is_visible(self):
+        return self.position + self.width >=0
+        
+    def render(self, screen):
+        x = self.position
+        uy = 0
+        uh = self.upper_height
+        pygame.draw.rect(screen, self.color, (x, uy, self.width, uh))
+        ly = screen.get_height() - self.lower_height
+        lh = self.lower_height
+        pygame.draw.rect(screen, self.color, (x, ly, self.width, lh))
 
 
 if __name__ == '__main__':
