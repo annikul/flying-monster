@@ -6,9 +6,12 @@ DEFAULT_SCREEN_SIZE = (800, 450)
 FPS_TEXT_COLOR = (128, 0, 128)  # dark purple
 TEXT_COLOR = (128, 0, 0) # dark red
 
+DEBUG  = 0
+
 def main():
     game = Game()
     game.run()
+
 
 # Kaikki missä on self voi käyttää missä vain funktiossa. Se muuttuja menee selfiin
 class Game:
@@ -36,6 +39,7 @@ class Game:
             pygame.transform.rotozoom(x, 0, self.screen_h / 9600).convert_alpha
             for x in original_monster_images
         ]
+        self.monster_radius = self.monster_imgs[0].get_height() / 2  # Likiarvo
         original_monster_dead_images = [
             pygame.image.load(f'images/monster/got_hit/frame-{i}.png')
             for i in [1, 2]
@@ -45,7 +49,7 @@ class Game:
             for img in original_monster_dead_images
         ]
         original_bg_images = [
-            pygame.image.load(f'images/background/layer_{1}.png')
+            pygame.image.load(f'images/background/layer_{i}.png')
             for i in [1, 2, 3]
         ]
         self.bg_imgs = [
@@ -58,13 +62,22 @@ class Game:
         self.bg_pos = [0, 0, 0]  # Tausta kuva ei ala alusta kun peli alkaa alusta, tausta ei välky
 
     def init_objects(self):
+        self.score = 0
         self.monster_alive = True
         self.monster_y_speed = 0
         self.monster_pos = (self.screen_w / 3, self.screen_h / 4)   # Kohta/korkeus mistä monsteri aloittaa
         self.mosnter_angle = 0
         self.monster_frame = 0
         self.monster_lift = False
-        self.obstacles = [Obstacle.make_random(self.screen_w, self.screen_h)]
+        self.obstacles: list[Obstacle] = []
+        self.add_obstacle()
+
+    def add_obstacle(self):
+        obstacle = Obstacle.make_random(self.screen_w, self.screen_h)
+        self.obstacles.append(obstacle)
+
+    def remove_oldest_obstacle(self):
+        self.obstacles.pop(0)
         
     def scale_positions(self, scale_x, scale_y):
         self.monster_pos = (self.monster_pos[0] * scale_x, self.monster_pos[1] * scale_y)
@@ -139,29 +152,46 @@ class Game:
 
         if self.monster_alive: # Jos monsteri elossa
             # laske monsterin asento
-            self.monster_angle = -90 * 0.04 *self.monster_y_speed
+            self.monster_angle = -90 * 0.04 * self.monster_y_speed
             self.monster_angle = max(min(self.monster_angle, 60), -60)
         
         # Tarkista onko monsteri pudonnut maahan
-        if monster_y > self.screen_h * 0.78:
-            monster_y = self.screen_h * 0.78
+        if monster_y > self.screen_h * 0.82:
+            monster_y = self.screen_h * 0.82
             self.monster_speed = 0
             self.mosnter_alive = False
 
         # Aseta  monsterin x-y-koordinaatit self.monster_pos-muuttujaan
         self.monster_pos = (self.monster_pos[0], monster_y)
 
+        # Lisää uusi este, kun viimeisin este on yli ruudun puolivälin
+        if self.obstacles[-1].position < self.screen_w / 2: # Kun käyttää -1 silloin se tarkoittaa viimeistä listalta eli ensimmäinen oikealta. -2 on toinen oikealta
+            self.add_obstacle()
+
+        # Poista vasemmanpuoleisin este, kun se menee pois ruudulta
+        if not self.obstacles[0].is_visible():
+            self.remove_oldest_obstacle()
+            self.score += 1
+
+        # Siirrä esteitä sopivalla nopeudella ja tarkista törmäys
+        self.monster_collides_with_obstacle = False
         for obstacle in self.obstacles:
-            obstacle.move(self.screen_w * 0.005)
+            if self.monster_alive:
+                obstacle.move(self.screen_w * 0.005)
+            if obstacle.collides_with_circle(self.monster_pos, self.monster_radius):
+                self.monster_collides_with_obstacle = True
+
+        if self.monster_collides_with_obstacle:
+            self.monster_alive = False
 
     def update_screen(self):
         # Täytä tausta violetilla värillä
-        #self.screen.fill('purple')
+        # self.screen.fill('purple')
 
         # Piirrä taustakerrokset (3 kpl)
         for i in range(len(self.bg_imgs)):
             # Ensin piirrä vasen tausta
-            self.screen.blit(self.bg_imgs[i], (self.bg_pos[1], 0))
+            self.screen.blit(self.bg_imgs[i], (self.bg_pos[i], 0))
             # Jos vasen tausta ei riitä peittämään koko ruutua, niin...
             if self.bg_pos[i] + self.bg_widths[i] < self.screen_w:
                 # ...piirrä sama tausta vielä oikealle puolelle
@@ -177,19 +207,34 @@ class Game:
         for obstacle in self.obstacles:
             obstacle.render(self.screen)
 
-        # Piirrä lintu
+        # Piirrä monsteri
         if self.monster_alive:
             monster_img_i = self.monster_imgs[(self.monster_frame // 3) % 4]
         else:
             monster_img_i = self.monster_dead_imgs[(self.monster_frame // 10) % 2]
         monster_img = pygame.transform.rotozoom(monster_img_i, self.monster_angle, 1)
-        self.screen.blit(monster_img, self.monster_pos)
+        monster_x = self.monster_pos[0] - monster_img.get_width() / 2 * 1.25
+        monster_y = self.monster_pos[1] - monster_img.get_height() / 2 
+        self.screen.blit(monster_img, (monster_x, monster_y))
 
+        # Piirrä pisteet
+        score_text = f'{self.score}'
+        score_img = self.font_big.render(score_text, True, SCORE_TEXT_COLOR)
+        score_pos = (self.screen_w * 0.95 - score_img.get_width(),
+                    self.screen_h - score_img.get_height())
+        self.screen.blit(score_img, score_pos)
+
+        # Piirrä GAME OVER -teksti
         if not self.monster_alive:
             game_over_img = self.font_big.render('GAME OVER', True, TEXT_COLOR)
             x = self.screen_w / 2 - game_over_img.get_width() / 2
             y = self.screen_h / 2 - game_over_img.get_height() / 2
             self.screen.blit(game_over_img, (x, y))
+
+        # Piirrä kehittämistä helpottava ympyrä
+        if DEBUG:
+            color = (0, 0, 0) if not self.monster_collides_with_obstacle else (255, 0, 0)
+            pygame.draw.circle(self.screen, color, self.monster_pos, self.monster_radius)
 
         # Piirrä FPS luku
         if self.show_fps:
@@ -205,21 +250,40 @@ class Obstacle:
         self.position = position # vasemman reunan sijainti
         self.upper_height = upper_height
         self.lower_height =lower_height
+        self.hole_size = hole_size
         self.width = width
         self.color = (0, 128, 0) # dark green
 
     @classmethod
     def make_random(cls, screen_w, screen_h):
-        h1 = random.randint(int(screen_h * 0.05), int(screen_h * 0.75))
-        h2 = random.randint(int((screen_h - h1) * 0.05),
-                             int((screen_h - h1) * 0.75))
-        return cls(upper_height=h1, lower_height=h2, position=screen_w)
+        hole_size = random.randint(int(screen_h * 0.25),
+                                   int(screen_h * 0.75))
+        h2 = random.randint(int(screen_h * 0.15), int(screen_h * 0.75))
+        h1 = screen_h - h2 - hole_size
+        return cls(upper_height=h1, lower_height=h2,
+                   hole_size=hole_size, position=screen_w)
         
     def move(self, speed):
         self.position -= speed
 
     def is_visible(self):
-        return self.position + self.width >=0
+        return self.position + self.width >= 0
+    
+    def collides_with_circle(self, center, radius):
+        (x, y) = center
+        y1 = self.upper_height
+        y2 = self.upper_height + self.hole_size
+        p = self.position
+        q = self.position + self.width
+
+        if x - radius > q or x + radius < p:
+            return False
+        
+        # Helpotetaan asiaa olettamalla ympyrä neliöksi
+        if y1 > y - radius or y2 < y + radius:
+            return True
+        
+        return False
         
     def render(self, screen):
         x = self.position
