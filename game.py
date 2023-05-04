@@ -38,7 +38,7 @@ class Game:
         self.screen_h = self.screen.get_height()
         self.running = False
         self.font16 = pygame.font.Font('fonts/SyneMono-Regular.ttf', 16)
-        self.init.sounds()
+        self.init_sounds()
         self.init_graphics()
         self.init_objects()
         self.open_menu()
@@ -257,7 +257,7 @@ class Game:
         self.monster_pos = (self.monster_pos[0], monster_y)
 
         # Lisää uusi este, kun viimeisin este on yli ruudun puolivälin
-        if self.obstacles[-1].position < self.next_obstacle_at # Kun käyttää -1 silloin se tarkoittaa viimeistä listalta eli ensimmäinen oikealta. -2 on toinen oikealta
+        if self.obstacles[-1].position < self.next_obstacle_at: # Kun käyttää -1 silloin se tarkoittaa viimeistä listalta eli ensimmäinen oikealta. -2 on toinen oikealta
             self.add_obstacle()
             self.next_obstacle_at = random.randint(
                 int(self.screen_w * 0.35),
