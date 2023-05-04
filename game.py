@@ -2,9 +2,14 @@ import random
 
 import pygame
 
+from highscore import HighscoreRecorder
+from menu import Menu
+from obstacle import Obstacle
+
 DEFAULT_SCREEN_SIZE = (800, 450)
 FPS_TEXT_COLOR = (128, 0, 128)  # dark purple
 TEXT_COLOR = (128, 0, 0) # dark red
+SCORE_TEXT_COLOR = (0, 64, 160)  
 
 DEBUG  = 0
 
@@ -12,23 +17,39 @@ def main():
     game = Game()
     game.run()
 
-
 # Kaikki missä on self voi käyttää missä vain funktiossa. Se muuttuja menee selfiin
 class Game:
     def __init__(self):
         pygame.init()
         self.clock = pygame.time.Clock()
+        self.menu = Menu([
+            "New Game",
+            "High Scores",
+            "About",
+            "Quit"
+        ])
+        self.highscore_recorder = HighscoreRecorder()
         self.is_fullscreen = False
+        self.is_in_menu = True
+        self.is_in_highscore_record = False
         self.show_fps = True
         self.screen = pygame.display.set_mode(DEFAULT_SCREEN_SIZE)
         self.screen_w = self.screen.get_width()
         self.screen_h = self.screen.get_height()
         self.running = False
         self.font16 = pygame.font.Font('fonts/SyneMono-Regular.ttf', 16)
+        self.init.sounds()
         self.init_graphics()
         self.init_objects()
+        self.open_menu()
+
+    def init_sounds(self):
+        self.flying_sound = pygame.mixer.Sound("sounds/flying.wav")
+        self.hit_sound = pygame.mixer.Sound("sounds/hit.wav")
 
     def init_graphics(self):
+        self.menu.set_font_size(int(48 * self.screen_h / 450))
+        self.highscore_recorder.set_font_size(int(36 * self.screen_h / 450))
         big_font_size = int(96 * self.screen_h / 450)
         self.font_big = pygame.font.Font('fonts/SyneMono-Regular.ttf', big_font_size)
         original_monster_images = [
@@ -36,7 +57,7 @@ class Game:
             for i in [1, 2, 3, 4]
         ]
         self.monster_imgs = [
-            pygame.transform.rotozoom(x, 0, self.screen_h / 9600).convert_alpha
+            pygame.transform.rotozoom(x, 0, self.screen_h / 9600).convert_alpha()
             for x in original_monster_images
         ]
         self.monster_radius = self.monster_imgs[0].get_height() / 2  # Likiarvo
@@ -70,6 +91,7 @@ class Game:
         self.monster_frame = 0
         self.monster_lift = False
         self.obstacles: list[Obstacle] = []
+        self.next_obstacle_at = self.screen_w / 2
         self.add_obstacle()
 
     def add_obstacle(self):
@@ -83,14 +105,29 @@ class Game:
         self.monster_pos = (self.monster_pos[0] * scale_x, self.monster_pos[1] * scale_y)
         for i in range(len(self.bg_pos)):
             self.bg_pos[i] = self.bg_pos[i] * scale_x
+        for obstacle in self.obstacles:
+            obstacle.width *= scale_x
+            obstacle.position *= scale_x
+            obstacle.upper_height *= scale_y
+            obstacle.hole_size *= scale_y
+            obstacle.lower_height *= scale_y
 
     def run(self):  # Aina kun lisätään funktioon luokkia pitää olla (self): #Tämä on funktio alla luokat
         self.running = True
     
         while self.running:
+            # Käsittele tapahtumat (eventit)
             self.handle_events()
+
+            # Pelin logiikka (liikkumiset, painovaimo, yms)
             self.handle_game_logic()
+
+            # Päivitä näyttö, piirtää taustalle kaikki asiat.
             self.update_screen()
+
+            # Päivitä näytölle piirretyt asiat näkyviin
+            pygame.display.flip()
+
             # Odota niin kauan , että ruudun päivitysnopeus on 60fps  # Pitää ruudun päivityksen vakituisena
             self.clock.tick(60)  # monsterin nopeus
                            
@@ -102,14 +139,66 @@ class Game:
                     self.running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_SPACE, pygame.K_UP):
-                        self.monster_lift = True  # Monsteri nousee ylöspäin
+                        if not self.is_in_menu:
+                            self.monster_lift = True  # Monsteri nousee ylöspäin
                 elif event.type == pygame.KEYUP:
-                    if event.key in (pygame.K_SPACE, pygame.K_UP):
-                        self.monster_lift = False
-                    elif event.key in (pygame.K_f, pygame.K_F11):
+                    if event.key in (pygame.K_f, pygame.K_F11):
                         self.toggle_fullscreen()
-                    elif event.key in (pygame.K_r, pygame.K_RETURN):  
-                        self.init_objects()  # r tai enterillä saa pelin käynnistymään uudestaan
+                    elif self.is_in_menu:
+                        if event.key == pygame.K_UP:
+                            self.menu.select_previous_item()
+                        elif event.key == pygame.K_DOWN:
+                            self.menu.select_next_item
+                        elif event.key in (pygame.K_RETURN): 
+                            item = self.menu.get_selected_item()
+                            if item == "New Game":
+                                self.start_game()
+                            elif item == "High Scores":
+                                pass # TODO: Implement High Score view
+                            elif item == "About":
+                                pass # TODO: Implement About view
+                            elif item == "Quit":
+                                self.running = False
+                    elif event.key in (pygame.K_SPACE, pygame.K_UP):
+                        self.monster_lift = False
+                    elif event.key == pygame.K_ESCAPE or not self.monster_alive:
+                        if not self.is_in_highscore_record:
+                            self.record_highscores()
+                        else:
+                            self.open_menu()
+                    
+    def start_game(self):
+        self.play_game_music()
+        self.is_in_menu = False
+        self.is_in_highscore_record = False
+        self.init_objects()
+        self.flying_sound.play(-1)
+
+    def open_menu(self):
+        self.play_menu_music()
+        self.is_in_menu = True
+        self.flying_sound.stop()
+
+    def kill_monster(self):
+        if self.monster_alive:
+            self.monster_alive = False
+            self.flying_sound.stop()
+            self.hit_sound.play()
+            pygame.mixer.music.fadeout(500)
+
+    def record_highscores(self):
+        self.is_in_highscore_record = True
+        print('High score')
+
+    def play_menu_music(self):
+        pygame.mixer.music.load('music/menu_chill.ogg')
+        pygame.mixer_music.set_volume(0.4)
+        pygame.mixer.music.play(loops=-1)
+             
+    def play_game_music(self):
+        pygame.mixer.music.load('music/run_game_2.ogg')
+        pygame.mixer.music.set_volume(0.4)
+        pygame.mixer_music.play(loops=-1)
 
     def toggle_fullscreen(self):
         old_w = self.screen_w
@@ -124,12 +213,15 @@ class Game:
         self.screen_w = screen.get_width()
         self.screen_h = screen.get_height()
         self.init_graphics()
-        self.scale_positions(
+        self.scale_positions_and_sizes(
             scale_x=(self.screen_w / old_w),
             scale_y=(self.screen_h / old_h),
         )
 
     def handle_game_logic(self):
+        if self.is_in_menu:
+            return
+        
         if self.monster_alive:
             self.bg_pos[0] -= 0.5
             self.bg_pos[1] -= 1
@@ -158,15 +250,19 @@ class Game:
         # Tarkista onko monsteri pudonnut maahan
         if monster_y > self.screen_h * 0.82:
             monster_y = self.screen_h * 0.82
-            self.monster_speed = 0
-            self.mosnter_alive = False
+            self.monster_y_speed = 0
+            self.kill_monster
 
         # Aseta  monsterin x-y-koordinaatit self.monster_pos-muuttujaan
         self.monster_pos = (self.monster_pos[0], monster_y)
 
         # Lisää uusi este, kun viimeisin este on yli ruudun puolivälin
-        if self.obstacles[-1].position < self.screen_w / 2: # Kun käyttää -1 silloin se tarkoittaa viimeistä listalta eli ensimmäinen oikealta. -2 on toinen oikealta
+        if self.obstacles[-1].position < self.next_obstacle_at # Kun käyttää -1 silloin se tarkoittaa viimeistä listalta eli ensimmäinen oikealta. -2 on toinen oikealta
             self.add_obstacle()
+            self.next_obstacle_at = random.randint(
+                int(self.screen_w * 0.35),
+                int(self.screen_w * 0.65),
+            )
 
         # Poista vasemmanpuoleisin este, kun se menee pois ruudulta
         if not self.obstacles[0].is_visible():
@@ -182,14 +278,17 @@ class Game:
                 self.monster_collides_with_obstacle = True
 
         if self.monster_collides_with_obstacle:
-            self.monster_alive = False
+            self.kill_monster()
 
     def update_screen(self):
         # Täytä tausta violetilla värillä
         # self.screen.fill('purple')
 
         # Piirrä taustakerrokset (3 kpl)
-        for i in range(len(self.bg_imgs)):
+        for i in range(len(self.bg_imgs)): # i käy läpi luvut 0, 1 ja 2
+            # Menussa piirretään vain ensimmäinen taustakerros
+            if self.is_in_menu and i == 1:
+                break # Kun ollan menussa ja i=1 niin lopetetaan looppi
             # Ensin piirrä vasen tausta
             self.screen.blit(self.bg_imgs[i], (self.bg_pos[i], 0))
             # Jos vasen tausta ei riitä peittämään koko ruutua, niin...
@@ -204,6 +303,14 @@ class Game:
                 # ...niin aloita alusta
                 self.bg_pos[i] += self.bg_widths[i]
 
+        if self.is_in_menu:
+            self.menu.render(self.screen)
+            return
+        
+        if self.is_in_highscore_record:
+            self.highscore_recorder.render(self.screen)
+            return
+        
         for obstacle in self.obstacles:
             obstacle.render(self.screen)
 
@@ -242,58 +349,6 @@ class Game:
             fps_img = self.font16.render(fps_text, True, FPS_TEXT_COLOR)
             self.screen.blit(fps_img, (0, 0))
 
-        pygame.display.flip()
-
-
-class Obstacle:
-    def __init__(self, position, upper_height, lower_height, width=100):
-        self.position = position # vasemman reunan sijainti
-        self.upper_height = upper_height
-        self.lower_height =lower_height
-        self.hole_size = hole_size
-        self.width = width
-        self.color = (0, 128, 0) # dark green
-
-    @classmethod
-    def make_random(cls, screen_w, screen_h):
-        hole_size = random.randint(int(screen_h * 0.25),
-                                   int(screen_h * 0.75))
-        h2 = random.randint(int(screen_h * 0.15), int(screen_h * 0.75))
-        h1 = screen_h - h2 - hole_size
-        return cls(upper_height=h1, lower_height=h2,
-                   hole_size=hole_size, position=screen_w)
-        
-    def move(self, speed):
-        self.position -= speed
-
-    def is_visible(self):
-        return self.position + self.width >= 0
     
-    def collides_with_circle(self, center, radius):
-        (x, y) = center
-        y1 = self.upper_height
-        y2 = self.upper_height + self.hole_size
-        p = self.position
-        q = self.position + self.width
-
-        if x - radius > q or x + radius < p:
-            return False
-        
-        # Helpotetaan asiaa olettamalla ympyrä neliöksi
-        if y1 > y - radius or y2 < y + radius:
-            return True
-        
-        return False
-        
-    def render(self, screen):
-        x = self.position
-        uy = 0
-        uh = self.upper_height
-        pygame.draw.rect(screen, self.color, (x, uy, self.width, uh))
-        ly = screen.get_height() - self.lower_height
-        lh = self.lower_height
-        pygame.draw.rect(screen, self.color, (x, ly, self.width, lh))
-
-
 if __name__ == '__main__':
     main()
